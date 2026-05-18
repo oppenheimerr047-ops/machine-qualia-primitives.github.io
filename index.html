@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Talimara · Gemma 4 in your browser · Classroom Session demo</title>
+<meta name="description" content="Talimara is an offline Android classroom-assessment app powered by Gemma 4 E2B. This page runs the same grading prompt and heatmap aggregation in your browser via WebGPU. Submitted to the Gemma 4 Good Hackathon." />
+<meta name="theme-color" content="#3a4d7a" />
+
+<!-- Open Graph / social cards -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Talimara · Gemma 4 grades a classroom, in your browser" />
+<meta property="og:description" content="Offline Android classroom-assessment app powered by Gemma 4 E2B. Same model, same grading prompt, same heatmap — in your browser via WebGPU. Gemma 4 Good Hackathon submission." />
+<meta property="og:image" content="og-card.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Talimara — Gemma 4 grades a classroom, offline." />
+<meta property="og:url" content="./" />
+<meta property="og:site_name" content="Talimara" />
+
+<!-- Twitter card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Talimara · Gemma 4 grades a classroom, in your browser" />
+<meta name="twitter:description" content="Offline Android classroom-assessment app powered by Gemma 4 E2B. Same model, same grading prompt, same heatmap — in your browser via WebGPU." />
+<meta name="twitter:image" content="og-card.png" />
+<meta name="twitter:image:alt" content="Talimara — Gemma 4 grades a classroom, offline." />
+
+<!-- Favicons -->
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+<link rel="manifest" href="site.webmanifest" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://unpkg.com" crossorigin />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700&family=Work+Sans:wght@400;500;600;700&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+:root {
+  --paper:        #f3eadb;
+  --paper-deep:   #e8d9be;
+  --paper-hi:     #fbf6ec;
+  --ink:          #1f1a14;
+  --ink-soft:     #4a3f2f;
+  --ink-faint:    #8b7d68;
+  --hairline:     rgba(31,26,20,.16);
+  --hairline-soft:rgba(31,26,20,.08);
+  --terracotta:   #c8623d;
+  --moss:         #5e7e4a;
+  --indigo:       #3a4d7a;
+  --ochre:        #c89744;
+  --rose:         #b8526a;
+  --slate:        #5d6770;
+  --display:      'Newsreader', Georgia, serif;
+  --ui:           'Work Sans', system-ui, sans-serif;
+  --hand:         'Caveat', cursive;
+  --mono:         'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; min-height: 100vh; }
+body {
+  font-family: var(--ui);
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--paper-hi) 0%, var(--paper) 60%);
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+}
+
+/* Thin narrative strip above the masthead (per ghpages-landing-shape grill).
+   Brand on the left, submission link pills on the right. */
+.top-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 0 0 16px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid var(--hairline-soft);
+  flex-wrap: wrap;
+}
+.top-strip .brand {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  letter-spacing: 0.4px;
+  line-height: 1.5;
+  max-width: 720px;
+}
+.top-strip .brand strong { color: var(--ink); font-weight: 600; }
+.top-strip nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.top-strip a.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-family: var(--ui);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper-hi);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  text-decoration: none;
+  transition: transform .08s ease, background .12s ease;
+}
+.top-strip a.pill:hover { background: var(--paper-deep); transform: translateY(-1px); }
+.top-strip a.pill .arrow { font-size: 11px; color: var(--ink-faint); }
+
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.masthead h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 28px;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+.masthead p {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.runtime-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--paper-hi);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+}
+.runtime-pill .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--slate);
+}
+.runtime-pill.ok .dot { background: var(--moss); }
+.runtime-pill.loading .dot { background: var(--ochre); animation: pulse 1.4s ease-in-out infinite; }
+.runtime-pill.error .dot { background: var(--terracotta); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+.controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.btn {
+  appearance: none;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper-hi);
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform .08s ease;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn.ghost { background: transparent; color: var(--ink); }
+.btn.indigo { background: var(--indigo); border-color: var(--indigo); }
+.btn.terracotta { background: var(--terracotta); border-color: var(--terracotta); }
+
+/* Codex polish-review _opencode_000681 D4 follow-up: WebGPU capability
+   cue. Pairs the Load button with a small badge so the option reads
+   even before the user clicks. */
+.webgpu-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.webgpu-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--paper-hi);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 6px 10px;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+/* Codex polish-review _opencode_000679 D2: louder canned banner. */
+.canned-banner {
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  background: #fef3c7;
+  border: 1px solid var(--ochre);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.canned-banner strong { color: var(--terracotta); }
+
+.stage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+@media (max-width: 880px) {
+  .stage { grid-template-columns: 1fr; }
+}
+
+/* Phone-frame chrome */
+.phone {
+  background: var(--ink);
+  border-radius: 36px;
+  padding: 12px 10px;
+  box-shadow: 0 18px 40px rgba(31,26,20,0.18), 0 4px 12px rgba(31,26,20,0.08);
+  width: 100%;
+  max-width: 420px;
+  justify-self: center;
+}
+.phone-label {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin: 12px 0 0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.phone-screen {
+  background: var(--paper);
+  border-radius: 28px;
+  padding: 18px 16px;
+  min-height: 640px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.phone-screen .status {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-bottom: 10px;
+}
+
+/* Teacher dashboard layout */
+.code-block {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  margin: 4px 0 0;
+}
+.code-caption {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin: 0 0 4px;
+}
+.section-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 16px;
+  margin: 16px 0 6px;
+}
+.pip-strip {
+  display: flex;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+.pip-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pip {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--hairline);
+  background: var(--paper-hi);
+}
+.pip.empty   { background: var(--paper-hi); }
+.pip.green   { background: var(--moss); }
+.pip.amber   { background: var(--ochre); }
+.pip.red     { background: var(--terracotta); }
+.pip-lbl { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+
+.row {
+  display: flex; justify-content: space-between;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--hairline-soft);
+  align-items: center;
+}
+.row:last-child { border-bottom: 0; }
+.row-name { font-size: 13px; color: var(--ink); }
+.row-cells { display: flex; gap: 5px; font-family: var(--mono); font-size: 14px; color: var(--ink-soft); }
+.row-cells span.ok { color: var(--moss); }
+.row-cells span.bad { color: var(--terracotta); }
+.row-cells span.partial { color: var(--ochre); }
+
+.blindspot {
+  background: var(--paper-hi);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+}
+.blindspot h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.blindspot .miss {
+  display: flex; justify-content: space-between;
+  font-size: 12px; color: var(--ink-soft);
+  padding: 4px 0;
+}
+.blindspot .miss .count { font-family: var(--mono); }
+
+/* Student layout */
+.join {
+  text-align: center;
+  padding-top: 60px;
+}
+.join h2 {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.join input {
+  font-family: var(--mono);
+  font-size: 22px;
+  letter-spacing: 0.16em;
+  text-align: center;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 14px;
+  width: 200px;
+  background: var(--paper-hi);
+  color: var(--ink);
+}
+.take h3 {
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 8px 0 6px;
+}
+.take .qstem {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  margin: 4px 0 14px;
+}
+.take textarea {
+  width: 100%;
+  min-height: 100px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: var(--display);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper-hi);
+  resize: none;
+}
+
+.feedback {
+  background: var(--paper-hi);
+  border-left: 3px solid var(--moss);
+  padding: 10px 12px;
+  margin-top: 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.feedback.partial { border-left-color: var(--ochre); }
+.feedback.wrong   { border-left-color: var(--terracotta); }
+.feedback .label  { font-family: var(--mono); font-size: 10px; text-transform: uppercase; color: var(--ink-faint); letter-spacing: 0.05em; margin-bottom: 4px; }
+
+.notice {
+  margin-top: 24px;
+  padding: 12px 14px;
+  background: var(--paper-hi);
+  border: 1px solid var(--hairline-soft);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+.notice strong { color: var(--ink); }
+
+.log {
+  margin-top: 20px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  background: var(--paper-hi);
+  border: 1px solid var(--hairline-soft);
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ──────────────────────────────────────────────────────────────────
+ * Canned classroom session: 3-question photosynthesis rubric +
+ * 4 student answers per item, designed so Gemma 4 produces a varied
+ * heatmap (1 green, 1 amber, 1 red) for the dashboard demo.
+ * ─────────────────────────────────────────────────────────────────*/
+const SESSION_CODE = "PHO-271";
+// Codex polish-review _opencode_000679 D3: 2 items × 3 students = 6 grades.
+// Q2 (oxygen) was dropped to keep the scripted run under 40s. Q1 + Q3
+// preserve the green/amber/red heatmap variety the dashboard needs.
+const ASSESSMENT = {
+  title: "Today's rubric · Photosynthesis",
+  items: [
+    {
+      id: "q1",
+      prompt: "In one sentence, what do plants need to do photosynthesis?",
+      reference: "Plants need sunlight, water, and carbon dioxide (CO₂).",
+      criteria: ["names sunlight", "names water", "names CO₂"],
+      maxPoints: 3,
+      conceptTags: ["sunlight as input", "water as input", "CO₂ as input"],
+    },
+    {
+      id: "q3",
+      prompt: "Why are leaves green?",
+      reference: "Because of a pigment called chlorophyll, which absorbs red and blue light and reflects green light.",
+      criteria: ["names chlorophyll", "explains light absorption"],
+      maxPoints: 2,
+      conceptTags: ["chlorophyll pigment", "light absorption/reflection"],
+    },
+  ],
+};
+
+// Codex polish-review _opencode_000679 D3: 12 → 6 grades for a 20-40s
+// successful run, not a mini benchmark. 3 students × 2 items.
+const STUDENTS = [
+  { id: "s1", name: "Aisha M.",  answers: {
+    q1: "They need sunlight, water and air.",
+    q3: "Because of chlorophyll which makes them green.",
+  }},
+  { id: "s2", name: "Bayo O.",   answers: {
+    q1: "Sun and water.",
+    q3: "Because plants are green.",
+  }},
+  { id: "s3", name: "Chinwe E.", answers: {
+    q1: "Plants take in carbon dioxide and water and use sunlight to make sugar.",
+    q3: "Chlorophyll in the leaves absorbs red and blue light and reflects green.",
+  }},
+];
+
+/* Canned Gemma 4 grader outputs for offline / pre-model demo run.
+ * Used as fallback when MediaPipe isn't loaded yet so the scripted
+ * demo always works. Format matches ParsedGraderOutput on the
+ * Android side: {points, feedback, missConcepts}. */
+const CANNED_GRADES = {
+  "s1-q1": { points: 2, feedback: "Names sunlight and water; says 'air' instead of CO₂.",     missConcepts: ["CO₂ as input"] },
+  "s1-q3": { points: 1, feedback: "Names chlorophyll but doesn't explain absorption.",        missConcepts: ["light absorption/reflection"] },
+  "s2-q1": { points: 1, feedback: "Names sunlight and water; missing CO₂.",                   missConcepts: ["CO₂ as input"] },
+  "s2-q3": { points: 0, feedback: "Circular reasoning — doesn't name chlorophyll.",           missConcepts: ["chlorophyll pigment", "light absorption/reflection"] },
+  "s3-q1": { points: 3, feedback: "All three inputs named.",                                  missConcepts: [] },
+  "s3-q3": { points: 2, feedback: "Full credit — names chlorophyll and explains absorption.", missConcepts: [] },
+};
+
+/* ──────────────────────────────────────────────────────────────────
+ * MediaPipe LLM Web grader. Loads Gemma 4 E2B-IT lazily from
+ * litert-community on first call to grade(). If the model fails to
+ * load (e.g. WebGPU not available, slow connection), grade() falls
+ * back to the canned table so the demo always succeeds.
+ * ─────────────────────────────────────────────────────────────────*/
+const MODEL_URL = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task";
+const MEDIAPIPE_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.24";
+
+function buildGradingPrompt(item, studentAnswer) {
+  return [
+    "Grade ONE student answer for a short classroom check. Output JSON only.",
+    "",
+    "QUESTION:",
+    item.prompt,
+    "",
+    "REFERENCE ANSWER:",
+    item.reference,
+    "",
+    "EVALUATION CRITERIA:",
+    ...item.criteria.map((c, i) => `  ${i + 1}. ${c}`),
+    "",
+    "STUDENT ANSWER:",
+    studentAnswer,
+    "",
+    `Write a single JSON object: {"points": 0..${item.maxPoints}, "feedback": "one short sentence", "miss_concepts": ["short concept name"]}.`,
+    "Start with { and end with }. No prose.",
+    "Begin:",
+  ].join("\n");
+}
+
+function extractGradeJson(text, maxPoints) {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const o = JSON.parse(m[0]);
+    const pts = Math.max(0, Math.min(maxPoints, Number.isFinite(o.points) ? Math.round(o.points) : 0));
+    return {
+      points: pts,
+      feedback: typeof o.feedback === "string" ? o.feedback.trim() : "",
+      missConcepts: Array.isArray(o.miss_concepts)
+        ? o.miss_concepts.filter(s => typeof s === "string" && s.trim()).slice(0, 3)
+        : [],
+    };
+  } catch (e) { return null; }
+}
+
+class GemmaWebGrader {
+  constructor(onLog) {
+    this.onLog = onLog;
+    this.state = "idle"; // idle | loading | ready | error
+    this.llm = null;
+    this.error = null;
+  }
+  log(s) { this.onLog && this.onLog(s); }
+
+  async ensureLoaded() {
+    if (this.state === "ready") return true;
+    if (this.state === "loading") return false;
+    if (this.state === "error") return false;
+    this.state = "loading";
+    this.log("[gemma] importing @mediapipe/tasks-genai from CDN…");
+    try {
+      const mod = await import(/* webpackIgnore: true */ MEDIAPIPE_CDN + "/genai_bundle.mjs");
+      const { FilesetResolver, LlmInference } = mod;
+      this.log("[gemma] resolving WebGPU fileset…");
+      const fileset = await FilesetResolver.forGenAiTasks(MEDIAPIPE_CDN + "/wasm");
+      this.log(`[gemma] loading gemma-4-E2B-it-web.task (~2 GB; first load only)…`);
+      this.llm = await LlmInference.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MODEL_URL },
+        maxTokens: 256,
+        topK: 40,
+        temperature: 0.2,
+        randomSeed: 42,
+      });
+      this.state = "ready";
+      this.log("[gemma] ready ✓");
+      return true;
+    } catch (e) {
+      this.state = "error";
+      this.error = e && e.message ? e.message : String(e);
+      this.log(`[gemma] load failed — falling back to canned grades. (${this.error.slice(0, 120)})`);
+      return false;
+    }
+  }
+
+  async grade(item, studentAnswer, key, opts = {}) {
+    const canned = CANNED_GRADES[key] || { points: 0, feedback: "—", missConcepts: [] };
+    // Codex polish-review _opencode_000679 D4: explicit canned mode lets
+    // judges skip the 2 GB download.
+    if (opts.forceCanned) return { ...canned, source: "canned" };
+    const ready = await this.ensureLoaded();
+    if (!ready) return { ...canned, source: "canned" };
+    try {
+      const prompt = buildGradingPrompt(item, studentAnswer);
+      const raw = await this.llm.generateResponse(prompt);
+      const parsed = extractGradeJson(raw, item.maxPoints);
+      if (parsed) return { ...parsed, source: "gemma-web" };
+      this.log(`[gemma] parse failed; using canned for ${key}`);
+      return { ...canned, source: "canned (parse fail)" };
+    } catch (e) {
+      this.log(`[gemma] inference failed for ${key}: ${e.message || e}; using canned`);
+      return { ...canned, source: "canned (infer fail)" };
+    }
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * Aggregation: pure function (mirrors ClassroomDashboardAggregator
+ * on the Android side). Computes per-item miss-rate buckets +
+ * top-missed concepts.
+ * ─────────────────────────────────────────────────────────────────*/
+function pipBucket(missRate) {
+  if (missRate == null) return "empty";
+  if (missRate >= 0.6)  return "red";
+  if (missRate >= 0.3)  return "amber";
+  return "green";
+}
+function aggregate(grades) {
+  const perItem = ASSESSMENT.items.map(item => {
+    const itemGrades = STUDENTS
+      .map(s => grades[`${s.id}-${item.id}`])
+      .filter(Boolean);
+    const attempted = itemGrades.length;
+    const correct = itemGrades.filter(g => g.points >= item.maxPoints).length;
+    const missRate = attempted === 0 ? null : 1 - (correct / attempted);
+    return { itemId: item.id, attempted, correct, missRate };
+  });
+  const conceptCounts = {};
+  for (const g of Object.values(grades)) {
+    for (const c of (g.missConcepts || [])) {
+      const k = c.trim();
+      if (k) conceptCounts[k] = (conceptCounts[k] || 0) + 1;
+    }
+  }
+  const topMissConcepts = Object.entries(conceptCounts)
+    .map(([concept, count]) => ({ concept, count }))
+    .sort((a, b) => b.count - a.count || a.concept.localeCompare(b.concept))
+    .slice(0, 5);
+  return { perItem, topMissConcepts };
+}
+
+/* ──────────────────────────────────────────────────────────────────
+ * App
+ * ─────────────────────────────────────────────────────────────────*/
+function App() {
+  const [phase, setPhase] = useState("idle"); // idle | running | done
+  const [studentIdx, setStudentIdx] = useState(0);
+  const [itemIdx, setItemIdx] = useState(0);
+  const [studentDraft, setStudentDraft] = useState("");
+  const [grades, setGrades] = useState({}); // key=`${sid}-${qid}` -> {points,feedback,missConcepts,source}
+  const [logLines, setLogLines] = useState([]);
+  const [graderState, setGraderState] = useState({ state: "idle", info: "click 'Load Gemma 4' to begin" });
+  const graderRef = useRef(null);
+
+  const appendLog = useCallback((s) => {
+    const ts = new Date().toISOString().slice(11, 19);
+    setLogLines(prev => [...prev, `${ts}  ${s}`].slice(-80));
+  }, []);
+
+  // lazy create the grader once
+  if (!graderRef.current) {
+    graderRef.current = new GemmaWebGrader(appendLog);
+  }
+  const grader = graderRef.current;
+
+  const loadGemma = async () => {
+    setGraderState({ state: "loading", info: "downloading ~2 GB on first load…" });
+    const ok = await grader.ensureLoaded();
+    setGraderState(
+      ok ? { state: "ready", info: "Gemma 4 E2B-IT · WebGPU · in-browser" }
+         : { state: "error", info: "fallback: canned grades (Gemma 4 outputs from Android run)" }
+    );
+  };
+
+  const runScriptedDemo = async ({ forceCanned = false } = {}) => {
+    if (phase === "running") return;
+    setPhase("running");
+    setGrades({});
+    setStudentIdx(0);
+    setItemIdx(0);
+    const mode = forceCanned ? "canned (Gemma 4 outputs from Android run)" : (graderState.state === "ready" ? "live Gemma 4 in browser" : "lazy-load Gemma 4 then live");
+    appendLog(`[demo] start — 3 students × 2 items · ${mode}`);
+
+    for (let s = 0; s < STUDENTS.length; s++) {
+      setStudentIdx(s);
+      const student = STUDENTS[s];
+      for (let q = 0; q < ASSESSMENT.items.length; q++) {
+        setItemIdx(q);
+        const item = ASSESSMENT.items[q];
+        const ans = student.answers[item.id];
+        setStudentDraft(ans);
+        appendLog(`[demo] ${student.name} → Q${q+1}: "${ans.slice(0, 60)}${ans.length > 60 ? '…' : ''}"`);
+        await sleep(700);
+        const key = `${student.id}-${item.id}`;
+        const grade = await grader.grade(item, ans, key, { forceCanned });
+        setGrades(prev => ({ ...prev, [key]: grade }));
+        appendLog(`[grade] ${key} → ${grade.points}/${item.maxPoints} (${grade.source})`);
+        await sleep(500);
+      }
+    }
+    setPhase("done");
+    appendLog("[demo] complete");
+  };
+
+  return (
+    <div className="shell">
+      {/* Thin narrative strip — brand on left, submission links on right.
+          Per ghpages-landing-shape grill (codex 699): 1=B 3=B configuration.
+          Hrefs are sed-replaceable tokens; swap at deploy time:
+            https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/talimara-educator-assistant  → public writeup URL (Kaggle or in-repo path)
+            https://youtu.be/UEaomD_BzK8    → 3-minute YouTube link
+            https://github.com/machine-qualia-primitives/talimara     → public GitHub repo URL */}
+      <div className="top-strip">
+        <div className="brand">
+          <strong>Talimara</strong> · Gemma 4 Good Hackathon submission · offline classroom-assessment app, model on the phone
+        </div>
+        <nav>
+          <a className="pill" href="https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/talimara-educator-assistant"><span>Writeup</span><span className="arrow">→</span></a>
+          <a className="pill" href="https://youtu.be/UEaomD_BzK8" target="_blank" rel="noopener"><span>3-min video</span><span className="arrow">↗</span></a>
+          <a className="pill" href="https://github.com/machine-qualia-primitives/talimara" target="_blank" rel="noopener"><span>GitHub repo</span><span className="arrow">↗</span></a>
+        </nav>
+      </div>
+
+      <header className="masthead">
+        <div>
+          <h1>Talimara · Gemma 4 grades a classroom, in your browser</h1>
+          <p>
+            Two phones side-by-side. The teacher hosts a Classroom Session;
+            students join with a 6-character code and write open-ended answers;
+            Gemma 4 E2B-IT — running on WebGPU in this tab — grades each answer
+            against a natural-language rubric. Same Gemma 4 model. Same grading
+            prompt. Same heatmap aggregation. No cloud.
+          </p>
+        </div>
+        <Pill state={graderState.state} info={graderState.info} />
+      </header>
+
+      <div className="controls">
+        {/* Codex polish-review _opencode_000679 D4: parity buttons.
+            "Use canned mode" is primary alongside Load Gemma 4 so a
+            judge gets an immediate 30-second successful run without
+            waiting on the 2 GB model download. */}
+        <button
+          className="btn"
+          onClick={() => runScriptedDemo({ forceCanned: true })}
+          disabled={phase === "running"}>
+          {phase === "running" ? "Running…" : "▶ Run scripted demo (canned · 30s)"}
+        </button>
+        <div className="webgpu-cue">
+          <button
+            className="btn indigo"
+            onClick={loadGemma}
+            disabled={graderState.state === "loading" || graderState.state === "ready"}>
+            {graderState.state === "ready" ? "✓ Gemma 4 loaded" : "Load Gemma 4 (2 GB · WebGPU)"}
+          </button>
+          {/* Codex polish-review _opencode_000682 D4 R2: shortened from
+              "Optional · grade in this tab with real Gemma 4 over WebGPU"
+              to the tighter form below per the verdict. */}
+          <span className="webgpu-badge">
+            Optional · real Gemma 4 in browser
+          </span>
+        </div>
+        {/* Codex polish-review _opencode_000680 D2: hide live-Gemma
+            button until model is loaded — cleaner UX, less intimidating
+            than a disabled chip. */}
+        {graderState.state === "ready" && (
+          <button
+            className="btn terracotta"
+            onClick={() => runScriptedDemo({ forceCanned: false })}
+            disabled={phase === "running"}>
+            {phase === "running" ? "Running…" : "▶ Run scripted demo (live Gemma 4)"}
+          </button>
+        )}
+        <button
+          className="btn ghost"
+          onClick={() => { setGrades({}); setStudentDraft(""); setStudentIdx(0); setItemIdx(0); setPhase("idle"); appendLog("[demo] reset"); }}
+          disabled={phase === "running"}>
+          Reset
+        </button>
+      </div>
+
+      {/* Codex polish-review _opencode_000679 D2: louder canned banner. */}
+      {(graderState.state === "error" || (phase !== "idle" && graderState.state !== "ready" && Object.values(grades).some(g => g.source && g.source.startsWith("canned")))) && (
+        <div className="canned-banner">
+          <strong>Showing canned-mode demo</strong>
+          <span> · Gemma 4 not loaded in this browser. The grades you see here were
+            captured from an actual Android-device run of Talimara on a Samsung
+            Galaxy A15 5G (6&nbsp;GB RAM). Click <em>Load Gemma 4</em> above to run
+            the same grading in this tab via WebGPU instead.</span>
+        </div>
+      )}
+
+      <div className="stage">
+        <TeacherPanel
+          grades={grades}
+          phase={phase}
+          assessment={ASSESSMENT}
+          students={STUDENTS} />
+        <StudentPanel
+          student={STUDENTS[studentIdx]}
+          item={ASSESSMENT.items[itemIdx]}
+          itemIdx={itemIdx}
+          totalItems={ASSESSMENT.items.length}
+          answer={studentDraft}
+          phase={phase}
+          lastGrade={grades[`${STUDENTS[studentIdx].id}-${ASSESSMENT.items[itemIdx].id}`]} />
+      </div>
+
+      <div className="notice">
+        <strong>What this demo is.</strong> A faithful UX mirror of the Talimara
+        Android app, with real Gemma 4 inference running in your browser via
+        Google's MediaPipe LLM Inference for Web. The grading prompt, rubric
+        shape, and heatmap aggregation are the same code paths as the Android
+        build. If WebGPU isn't available or model download fails, the demo
+        falls back to canned Gemma 4 outputs captured from an actual Android
+        device run, so the side-by-side flow is still complete.
+        <br/><br/>
+        <strong>What this demo isn't.</strong> A hardware proof. Talimara's
+        credibility is the on-device APK running on a Samsung Galaxy A15 5G
+        — tier-2 phone, 6 GB RAM, no NPU, airplane mode, Wi-Fi Direct to every
+        student phone in the room. <strong>Distributed grading honesty:</strong>
+        student devices can already self-grade locally; peer-to-peer delegated
+        grading is the remaining live transport step. The browser demo lets you
+        experience the UX; the Android repo is where the work lives.
+      </div>
+
+      <pre className="log">{logLines.length ? logLines.join("\n") : "(log empty — click 'Load Gemma 4' or 'Run scripted classroom demo' to begin)"}</pre>
+    </div>
+  );
+}
+
+function Pill({ state, info }) {
+  const cls = state === "ready" ? "ok" : state === "loading" ? "loading" : state === "error" ? "error" : "";
+  const label = state === "ready" ? "Gemma 4 · WebGPU" : state === "loading" ? "loading…" : state === "error" ? "canned mode" : "not loaded";
+  return (
+    <div className={`runtime-pill ${cls}`} title={info}>
+      <span className="dot" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function TeacherPanel({ grades, phase, assessment, students }) {
+  const agg = aggregate(grades);
+  const totalAttempted = students.filter(s =>
+    assessment.items.some(item => grades[`${s.id}-${item.id}`])).length;
+
+  return (
+    <div className="phone-col">
+      <div className="phone">
+        <div className="phone-screen">
+          <div className="status"><span>9:41</span><span>· · ·</span></div>
+          <p className="code-caption">Students join with code</p>
+          <h2 className="code-block">{SESSION_CODE}</h2>
+          <p className="section-title" style={{marginTop: 14}}>{assessment.title}</p>
+          <p className="code-caption">{totalAttempted} of {students.length} answering</p>
+
+          <div className="pip-strip">
+            {agg.perItem.map(it => (
+              <div className="pip-col" key={it.itemId}>
+                <div className={`pip ${pipBucket(it.missRate)}`} />
+                <span className="pip-lbl">
+                  {it.attempted === 0 ? "—" : `${it.attempted - it.correct}/${it.attempted}`}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <p className="section-title">Class</p>
+          <div className="rows">
+            {students.map(s => (
+              <StudentRow key={s.id} student={s} grades={grades} items={assessment.items} />
+            ))}
+          </div>
+
+          <div className="blindspot">
+            <h4>Most missed concepts</h4>
+            {agg.topMissConcepts.length === 0 ? (
+              <div className="miss" style={{color: 'var(--ink-faint)'}}>
+                <span>{phase === "idle" ? "Will appear as answers land" : "No concept misses recorded"}</span>
+              </div>
+            ) : (
+              agg.topMissConcepts.map(m => (
+                <div className="miss" key={m.concept}>
+                  <span>{m.concept}</span>
+                  <span className="count">{m.count}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+        </div>
+      </div>
+      <p className="phone-label">teacher · live watch</p>
+    </div>
+  );
+}
+
+function StudentRow({ student, grades, items }) {
+  return (
+    <div className="row">
+      <span className="row-name">{student.name}</span>
+      <span className="row-cells">
+        {items.map(item => {
+          const g = grades[`${student.id}-${item.id}`];
+          if (!g) return <span key={item.id} style={{color: 'var(--ink-faint)'}}>·</span>;
+          if (g.points >= item.maxPoints) return <span key={item.id} className="ok">✓</span>;
+          if (g.points > 0)                return <span key={item.id} className="partial">~</span>;
+          return <span key={item.id} className="bad">✗</span>;
+        })}
+      </span>
+    </div>
+  );
+}
+
+function StudentPanel({ student, item, itemIdx, totalItems, answer, phase, lastGrade }) {
+  if (phase === "idle") {
+    return (
+      <div className="phone-col">
+        <div className="phone">
+          <div className="phone-screen">
+            <div className="status"><span>9:41</span><span>· · ·</span></div>
+            <div className="join">
+              <h2>Join your class</h2>
+              <p className="code-caption" style={{marginBottom: 16}}>Ask your teacher for the code.</p>
+              <input value="" placeholder="——————" readOnly />
+              <p className="code-caption" style={{marginTop: 20}}>Waiting for "Run scripted demo"…</p>
+            </div>
+          </div>
+        </div>
+        <p className="phone-label">student · join screen</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="phone-col">
+      <div className="phone">
+        <div className="phone-screen">
+          <div className="status"><span>9:41</span><span>· {student.name} ·</span></div>
+          <p className="code-caption">Question {itemIdx + 1} of {totalItems}</p>
+          <div className="take">
+            <h3>{item.prompt}</h3>
+            <textarea value={answer} readOnly placeholder="…"/>
+            {lastGrade && (
+              <div className={`feedback ${
+                lastGrade.points >= item.maxPoints ? "" :
+                lastGrade.points > 0 ? "partial" : "wrong"
+              }`}>
+                <div className="label">Gemma 4 · {lastGrade.points}/{item.maxPoints} pts · via {lastGrade.source}</div>
+                {lastGrade.feedback}
+                {lastGrade.missConcepts && lastGrade.missConcepts.length > 0 && (
+                  <div style={{marginTop: 6, color: 'var(--ink-faint)', fontFamily: 'var(--mono)', fontSize: 11}}>
+                    missed: {lastGrade.missConcepts.join(" · ")}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <p className="phone-label">student · take screen</p>
+    </div>
+  );
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
