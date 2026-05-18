@@ -506,7 +506,13 @@ const CANNED_GRADES = {
  * back to the canned table so the demo always succeeds.
  * ─────────────────────────────────────────────────────────────────*/
 const MODEL_URL = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.task";
-const MEDIAPIPE_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.24";
+// Per codex 704: pin @mediapipe/tasks-genai@0.10.27 (first release whose
+// README documents the browser Gemma 4 E2B web.task flow). ESM URL is the
+// preferred path; CJS URL is the fallback via classic script-tag injection
+// when ESM dynamic import trips over internal `require` references.
+const MEDIAPIPE_ESM_URL  = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27/genai_bundle.mjs";
+const MEDIAPIPE_CJS_URL  = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27/genai_bundle.cjs";
+const MEDIAPIPE_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27/wasm";
 
 function buildGradingPrompt(item, studentAnswer) {
   return [
@@ -562,10 +568,56 @@ class GemmaWebGrader {
     this.state = "loading";
     this.log("[gemma] importing @mediapipe/tasks-genai from CDN…");
     try {
-      const mod = await import(/* webpackIgnore: true */ MEDIAPIPE_CDN + "/genai_bundle.mjs");
-      const { FilesetResolver, LlmInference } = mod;
+      // Defensive: shim window.require so any code path that references it
+      // resolves to an empty object rather than throwing.
+      if (typeof window.require === 'undefined') {
+        window.require = function() { return {}; };
+      }
+      // JSDelivr serves the .cjs bundle with `content-type: application/node`,
+      // which browsers refuse to execute via <script src>. Fetch the bundle
+      // as text, then evaluate it inside a `new Function(...)` with shimmed
+      // module/exports/require in scope. This bypasses the MIME check.
+      this.log("[gemma] fetching CJS bundle source…");
+      const cjsResp = await fetch(MEDIAPIPE_CJS_URL);
+      if (!cjsResp.ok) {
+        throw new Error('CJS fetch failed: HTTP ' + cjsResp.status);
+      }
+      const cjsCode = await cjsResp.text();
+      this.log(`[gemma] CJS source ${(cjsCode.length / 1024).toFixed(1)} KB; evaluating…`);
+      const fakeModule = { exports: {} };
+      const fakeRequire = function() { return {}; };
+      // Wrap the code in a function so it can't pollute the outer scope.
+      // CJS code typically references `module`, `exports`, `require`.
+      const wrappedFn = new Function('module', 'exports', 'require', 'self', cjsCode);
+      wrappedFn(fakeModule, fakeModule.exports, fakeRequire, window);
+      const mod = fakeModule.exports;
+      // Deep export-shape probe — try every reasonable location.
+      let FilesetResolver, LlmInference;
+      const candidates = [
+        mod,
+        mod && mod.default,
+        mod && mod.default && mod.default.default,
+        mod && mod.tasks_genai,
+        mod && mod.default && mod.default.tasks_genai,
+      ];
+      for (const c of candidates) {
+        if (c && c.FilesetResolver && c.LlmInference) {
+          FilesetResolver = c.FilesetResolver;
+          LlmInference = c.LlmInference;
+          break;
+        }
+      }
+      if (!FilesetResolver || !LlmInference) {
+        const dump = {
+          modKeys: Object.keys(mod || {}),
+          defaultType: mod && mod.default ? typeof mod.default : 'absent',
+          defaultKeys: (mod && mod.default && typeof mod.default === 'object') ? Object.keys(mod.default) : 'n/a',
+          defaultIsFn: mod && typeof mod.default === 'function' ? (mod.default.name || 'anon-fn') : 'no',
+        };
+        throw new Error('exports not found: ' + JSON.stringify(dump));
+      }
       this.log("[gemma] resolving WebGPU fileset…");
-      const fileset = await FilesetResolver.forGenAiTasks(MEDIAPIPE_CDN + "/wasm");
+      const fileset = await FilesetResolver.forGenAiTasks(MEDIAPIPE_WASM_URL);
       this.log(`[gemma] loading gemma-4-E2B-it-web.task (~2 GB; first load only)…`);
       this.llm = await LlmInference.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: MODEL_URL },
@@ -652,6 +704,14 @@ function App() {
   const [grades, setGrades] = useState({}); // key=`${sid}-${qid}` -> {points,feedback,missConcepts,source}
   const [logLines, setLogLines] = useState([]);
   const [graderState, setGraderState] = useState({ state: "idle", info: "click 'Load Gemma 4' to begin" });
+  // Codex 705 B — manual-mode state. 'scripted' replays canned answers in a
+  // loop; 'manual' lets the user pick student + question, type an answer,
+  // submit, and watch the same Gemma 4 grader update the teacher dashboard.
+  const [mode, setMode] = useState("scripted"); // 'scripted' | 'manual'
+  const [manualStudentId, setManualStudentId] = useState(STUDENTS[0].id);
+  const [manualQuestionId, setManualQuestionId] = useState(ASSESSMENT.items[0].id);
+  const [manualAnswer, setManualAnswer] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
   const graderRef = useRef(null);
 
   const appendLog = useCallback((s) => {
@@ -704,22 +764,47 @@ function App() {
     appendLog("[demo] complete");
   };
 
+  // Codex 705 B — manual submit reuses the same grader + grades-state path.
+  const handleManualSubmit = async () => {
+    if (manualBusy) return;
+    const answer = manualAnswer.trim();
+    if (!answer) return;
+    const student = STUDENTS.find(s => s.id === manualStudentId);
+    const item = ASSESSMENT.items.find(q => q.id === manualQuestionId);
+    if (!student || !item) return;
+    setManualBusy(true);
+    setPhase("running");
+    // Mirror the manual selection into the side-by-side panels.
+    const sIdx = STUDENTS.findIndex(s => s.id === manualStudentId);
+    const qIdx = ASSESSMENT.items.findIndex(q => q.id === manualQuestionId);
+    setStudentIdx(sIdx);
+    setItemIdx(qIdx);
+    setStudentDraft(answer);
+    appendLog(`[manual] ${student.name} → Q${qIdx + 1}: "${answer.slice(0, 60)}${answer.length > 60 ? '…' : ''}"`);
+    const key = `${student.id}-${item.id}`;
+    const grade = await grader.grade(item, answer, key, { forceCanned: false });
+    setGrades(prev => ({ ...prev, [key]: grade }));
+    appendLog(`[grade] ${key} → ${grade.points}/${item.maxPoints} (${grade.source})`);
+    setManualBusy(false);
+    setPhase("done");
+  };
+
   return (
     <div className="shell">
       {/* Thin narrative strip — brand on left, submission links on right.
           Per ghpages-landing-shape grill (codex 699): 1=B 3=B configuration.
           Hrefs are sed-replaceable tokens; swap at deploy time:
-            https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/talimara-educator-assistant  → public writeup URL (Kaggle or in-repo path)
-            https://youtu.be/UEaomD_BzK8    → 3-minute YouTube link
-            https://github.com/machine-qualia-primitives/talimara     → public GitHub repo URL */}
+            #  → public writeup URL (Kaggle or in-repo path)
+            #    → 3-minute YouTube link
+            #     → public GitHub repo URL */}
       <div className="top-strip">
         <div className="brand">
           <strong>Talimara</strong> · Gemma 4 Good Hackathon submission · offline classroom-assessment app, model on the phone
         </div>
         <nav>
-          <a className="pill" href="https://www.kaggle.com/competitions/gemma-4-good-hackathon/writeups/talimara-educator-assistant"><span>Writeup</span><span className="arrow">→</span></a>
-          <a className="pill" href="https://youtu.be/UEaomD_BzK8" target="_blank" rel="noopener"><span>3-min video</span><span className="arrow">↗</span></a>
-          <a className="pill" href="https://github.com/machine-qualia-primitives/talimara" target="_blank" rel="noopener"><span>GitHub repo</span><span className="arrow">↗</span></a>
+          <a className="pill" href="#"><span>Writeup</span><span className="arrow">→</span></a>
+          <a className="pill" href="https://youtu.be/6pflZxMU4tA" target="_blank" rel="noopener"><span>3-min video</span><span className="arrow">↗</span></a>
+          <a className="pill" href="#" target="_blank" rel="noopener"><span>GitHub repo</span><span className="arrow">↗</span></a>
         </nav>
       </div>
 
@@ -737,17 +822,36 @@ function App() {
         <Pill state={graderState.state} info={graderState.info} />
       </header>
 
+      {/* Codex 705 B — mode tabs. Scripted = canned/auto loop. Manual = pick
+          a student, type an answer, watch Gemma 4 grade it live. */}
+      <div className="controls" style={{marginBottom: 8}}>
+        <button
+          className="btn"
+          onClick={() => setMode("scripted")}
+          disabled={phase === "running" || manualBusy}
+          style={mode !== "scripted" ? {background: 'transparent', color: 'var(--ink)'} : {}}>
+          Scripted demo
+        </button>
+        <button
+          className="btn"
+          onClick={() => { setMode("manual"); setStudentDraft(""); }}
+          disabled={phase === "running" || manualBusy}
+          style={mode !== "manual" ? {background: 'transparent', color: 'var(--ink)'} : {}}>
+          Manual mode
+        </button>
+      </div>
+
       <div className="controls">
         {/* Codex polish-review _opencode_000679 D4: parity buttons.
             "Use canned mode" is primary alongside Load Gemma 4 so a
             judge gets an immediate 30-second successful run without
             waiting on the 2 GB model download. */}
-        <button
+        {mode === "scripted" && <button
           className="btn"
           onClick={() => runScriptedDemo({ forceCanned: true })}
           disabled={phase === "running"}>
           {phase === "running" ? "Running…" : "▶ Run scripted demo (canned · 30s)"}
-        </button>
+        </button>}
         <div className="webgpu-cue">
           <button
             className="btn indigo"
@@ -765,7 +869,7 @@ function App() {
         {/* Codex polish-review _opencode_000680 D2: hide live-Gemma
             button until model is loaded — cleaner UX, less intimidating
             than a disabled chip. */}
-        {graderState.state === "ready" && (
+        {mode === "scripted" && graderState.state === "ready" && (
           <button
             className="btn terracotta"
             onClick={() => runScriptedDemo({ forceCanned: false })}
@@ -775,11 +879,74 @@ function App() {
         )}
         <button
           className="btn ghost"
-          onClick={() => { setGrades({}); setStudentDraft(""); setStudentIdx(0); setItemIdx(0); setPhase("idle"); appendLog("[demo] reset"); }}
-          disabled={phase === "running"}>
+          onClick={() => { setGrades({}); setStudentDraft(""); setStudentIdx(0); setItemIdx(0); setPhase("idle"); setManualAnswer(""); appendLog("[demo] reset"); }}
+          disabled={phase === "running" || manualBusy}>
           Reset
         </button>
       </div>
+
+      {/* Codex 705 B — manual control card. Only renders when mode === 'manual'. */}
+      {mode === "manual" && (
+        <div style={{
+          marginBottom: 24,
+          padding: '18px 22px',
+          background: 'var(--paper-hi)',
+          border: '1px solid var(--hairline)',
+          borderRadius: 12,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}>
+          <div style={{display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap'}}>
+            <label style={{display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-soft)'}}>
+              <span style={{fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: 0.4}}>Pick student</span>
+              <select value={manualStudentId} onChange={(e) => setManualStudentId(e.target.value)} disabled={manualBusy} style={{padding: '8px 10px', border: '1px solid var(--hairline)', borderRadius: 6, background: 'white', fontFamily: 'var(--ui)', fontSize: 14}}>
+                {STUDENTS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </label>
+            <label style={{display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-soft)', flex: 1, minWidth: 280}}>
+              <span style={{fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: 0.4}}>Question</span>
+              <select value={manualQuestionId} onChange={(e) => setManualQuestionId(e.target.value)} disabled={manualBusy} style={{padding: '8px 10px', border: '1px solid var(--hairline)', borderRadius: 6, background: 'white', fontFamily: 'var(--ui)', fontSize: 14}}>
+                {ASSESSMENT.items.map((q, i) => <option key={q.id} value={q.id}>{`Q${i+1}: ${q.prompt.slice(0, 80)}${q.prompt.length > 80 ? '…' : ''}`}</option>)}
+              </select>
+            </label>
+          </div>
+          <label style={{display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--ink-soft)'}}>
+            <span style={{fontFamily: 'var(--mono)', textTransform: 'uppercase', letterSpacing: 0.4}}>Free-form answer (write it yourself)</span>
+            <textarea
+              value={manualAnswer}
+              onChange={(e) => setManualAnswer(e.target.value)}
+              disabled={manualBusy}
+              rows={3}
+              placeholder="Type the answer you want Gemma 4 to grade…"
+              style={{
+                padding: '10px 12px',
+                border: '1px solid var(--hairline)',
+                borderRadius: 8,
+                fontFamily: 'var(--ui)',
+                fontSize: 14,
+                resize: 'vertical',
+                background: 'white',
+              }}
+            />
+          </label>
+          <div style={{display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap'}}>
+            <button
+              className="btn terracotta"
+              onClick={handleManualSubmit}
+              disabled={manualBusy || !manualAnswer.trim()}>
+              {manualBusy ? "Grading…" : (graderState.state === "ready" ? "▶ Submit + grade (live Gemma 4)" : "▶ Submit + grade")}
+            </button>
+            <span style={{fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-faint)'}}>
+              {graderState.state === "ready"
+                ? "Live Gemma 4 in your browser will score this against the rubric."
+                : graderState.state === "loading"
+                ? "Gemma 4 still loading — will use canned grading until ready."
+                : "Tip: click Load Gemma 4 above for real in-browser grading. Otherwise canned grades."}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Codex polish-review _opencode_000679 D2: louder canned banner. */}
       {(graderState.state === "error" || (phase !== "idle" && graderState.state !== "ready" && Object.values(grades).some(g => g.source && g.source.startsWith("canned")))) && (
